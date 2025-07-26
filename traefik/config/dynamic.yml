@@ -1,0 +1,124 @@
+# Enhanced Dynamic Security Configuration
+
+http:
+  middlewares:
+    # Enhanced security headers
+    secure-headers:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - OPTIONS
+          - PUT
+          - POST
+        accessControlMaxAge: 100
+        hostsProxyHeaders:
+          - "X-Forwarded-Host"
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customFrameOptionsValue: "SAMEORIGIN"
+        contentTypeNosniff: true
+        browserXssFilter: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsSeconds: 31536000
+        stsPreload: true
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        customResponseHeaders:
+          X-Robots-Tag: "noindex,nofollow,nosnippet,noarchive"
+          Server: ""
+          X-Powered-By: ""
+
+    # Rate limiting - more restrictive
+    rate-limit:
+      rateLimit:
+        burst: 20
+        average: 10
+        period: "1m"
+
+    # Aggressive rate limiting for admin services
+    admin-rate-limit:
+      rateLimit:
+        burst: 5
+        average: 2
+        period: "1m"
+
+    # IP whitelist for admin services (optional - configure your IPs)
+    admin-whitelist:
+      ipWhiteList:
+        sourceRange:
+          - "127.0.0.1/32"          # localhost
+          - "10.0.0.0/8"            # private networks
+          - "172.16.0.0/12"         # private networks  
+          - "192.168.0.0/16"        # private networks
+          # Add your home/office IP here:
+          # - "YOUR_HOME_IP/32"
+
+    # Enhanced authentication
+    auth:
+      basicAuth:
+        users:
+          - "${TRAEFIK_AUTH}"
+        realm: "Restricted Access"
+
+    # Geo-blocking (block common attack origins)
+    geo-block:
+      ipWhiteList:
+        sourceRange:
+          - "0.0.0.0/0"  # Allow all for now, customize as needed
+
+    # Chain security middlewares for admin services
+    admin-security:
+      chain:
+        middlewares:
+          - "secure-headers"
+          - "admin-rate-limit"
+          - "auth"
+
+    # Chain security middlewares for public services
+    public-security:
+      chain:
+        middlewares:
+          - "secure-headers"
+          - "rate-limit"
+
+    # Error pages middleware
+    error-pages:
+      errors:
+        status:
+          - "400-599"
+        service: "error-pages-service"
+        query: "/{status}.html"
+
+  services:
+    # Error pages service
+    error-pages-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8080"
+
+# Enhanced TLS configuration
+tls:
+  options:
+    default:
+      sslProtocols:
+        - "TLSv1.2"
+        - "TLSv1.3"
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_RSA_WITH_AES_256_GCM_SHA384"
+      curvePreferences:
+        - "CurveP521"
+        - "CurveP384"
+      minVersion: "VersionTLS12"
+      maxVersion: "VersionTLS13"
+
+# Certificate configuration
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${ACME_EMAIL}"
+      storage: "/letsencrypt/acme.json"
+      httpChallenge:
+        entryPoint: "web"

@@ -1,0 +1,47 @@
+# Sensitive configuration files
+*.env
+!.env.example
+
+# SSL certificates and private keys
+*/letsencrypt/
+*.pem
+*.key
+*.crt
+
+# Database data and volumes
+*/data/
+*/logs/
+
+# Backup files
+*.sql
+*.tar.gz
+*.backup
+
+# Sensitive setup files
+*cloudflare*setup*
+*credentials*
+*secrets*
+
+# Docker volumes and persistent data
+*_data/
+*/media/
+*/custom_apps/
+*/themes/
+
+# Temporary files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+
+# Nextcloud config files (contain sensitive data)
+nextcloud/config/config.php
+nextcloud/config/autoconfig.php
