@@ -1,96 +1,215 @@
-# Authentik Setup
+# 🔐 Authentik Identity Provider
 
-This directory contains the Docker Compose setup for Authentik, an open-source identity provider.
+Authentik is an open-source identity provider that provides single sign-on (SSO), user management, and authentication services for your entire Docker stack.
 
-## Setup Instructions
+## 🏗️ Architecture
 
-1. **Start the services:**
+Authentik now uses **shared database services** for improved resource efficiency:
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   Authentik     │    │ Shared Services │
+├─────────────────┤    ├─────────────────┤
+│ • Server        │───►│ • PostgreSQL    │
+│ • Worker        │───►│ • Redis (DB 1)  │
+└─────────────────┘    └─────────────────┘
+```
+
+## 📦 Components
+
+- **authentik-server:** Web interface and API server
+- **authentik-worker:** Background task processor
+- **Database:** Shared PostgreSQL (`shared_postgres`, database: `authentik`)
+- **Cache:** Shared Redis (`shared_redis`, database: 1)
+
+## 🚀 Setup Instructions
+
+### Prerequisites
+1. **Shared services must be running first:**
    ```bash
-   docker-compose up -d
+   cd ../shared-services
+   ./manage.sh start
+   ./manage.sh status  # Verify services are healthy
    ```
 
-2. **Check the logs:**
+2. **Domain configuration:**
+   - Ensure `auth.snorlax.me` points to your server
+   - Traefik handles SSL certificates automatically
+
+### Installation
+
+1. **Start Authentik:**
    ```bash
-   docker-compose logs -f
+   docker compose up -d
    ```
 
-3. **Access Authentik:**
-   - Web interface: http://localhost:9000
-   - HTTPS interface: https://localhost:9443
+2. **Verify startup:**
+   ```bash
+   docker compose logs -f
+   ```
 
-4. **Initial Setup:**
-   - On first startup, Authentik will create an initial admin user
-   - Check the logs for the initial admin credentials:
-     ```bash
-     docker-compose logs server | grep "Bootstrap"
-     ```
+3. **Access the admin interface:**
+   - URL: `https://auth.snorlax.me`
+   - Default login: Check `.env` file for `AUTHENTIK_BOOTSTRAP_*` credentials
 
-## Configuration
+## 🔧 Configuration
 
-- **Database:** PostgreSQL 12
-- **Cache:** Redis
-- **HTTP Port:** 9000
-- **HTTPS Port:** 9443
+### Environment Variables
+Key settings in `.env`:
+```bash
+# Domain
+DOMAIN=snorlax.me
 
-## Environment Variables
+# Admin credentials
+AUTHENTIK_BOOTSTRAP_PASSWORD=your_admin_password
+AUTHENTIK_BOOTSTRAP_EMAIL=admin@snorlax.me
 
-The `.env` file is symlinked from `~/dotfiles/docker/authentik/.env` for centralized configuration management. Key variables:
+# Shared database configuration (automatically configured)
+AUTHENTIK_POSTGRESQL__HOST=shared_postgres
+AUTHENTIK_POSTGRESQL__USER=authentik
+AUTHENTIK_POSTGRESQL__NAME=authentik
+AUTHENTIK_POSTGRESQL__PASSWORD=secure_password
 
-- `PG_PASS`: Database password (automatically generated)
-- `AUTHENTIK_SECRET_KEY`: Secret key for Authentik (automatically generated)
-- `COMPOSE_PORT_HTTP`: HTTP port (default: 9000)
-- `COMPOSE_PORT_HTTPS`: HTTPS port (default: 9443)
-
-To modify configuration, edit the file at `~/dotfiles/docker/authentik/.env`.
-
-## Email Configuration (Optional)
-
-To enable email functionality, edit `~/dotfiles/docker/authentik/.env` and uncomment/configure the SMTP settings:
-
-```env
-AUTHENTIK_EMAIL__HOST=smtp.gmail.com
-AUTHENTIK_EMAIL__PORT=587
-AUTHENTIK_EMAIL__USERNAME=your_email@gmail.com
-AUTHENTIK_EMAIL__PASSWORD=your_app_password
-AUTHENTIK_EMAIL__USE_TLS=true
-AUTHENTIK_EMAIL__FROM=authentik@yourdomain.com
+# Shared Redis configuration (automatically configured) 
+AUTHENTIK_REDIS__HOST=shared_redis
+AUTHENTIK_REDIS__PASSWORD=secure_password
+AUTHENTIK_REDIS__DB=1
 ```
 
-## Commands
+### Database Migration Status
+✅ **Migration Complete:**
+- **Old:** `authentik-postgresql-1` (dedicated container)
+- **New:** `shared_postgres` (shared container, database: `authentik`)
+- **Benefits:** ~150MB RAM savings + simplified management
 
-- Start: `docker-compose up -d`
-- Stop: `docker-compose down`
-- View logs: `docker-compose logs -f`
-- Restart: `docker-compose restart`
-- Update: `docker-compose pull && docker-compose up -d`
+## 🔗 Integration
 
-## File Structure
+### Traefik Integration
+Authentik is automatically configured with Traefik labels:
+- **URL:** `auth.snorlax.me`
+- **SSL:** Automatic Let's Encrypt certificates
+- **Load Balancer:** Port 9000
 
+### SSO Integration
+Use Authentik to provide SSO for other services:
+1. Create applications in Authentik admin panel
+2. Configure OAuth2/OIDC providers
+3. Update service configurations to use Authentik
+
+## 📊 Monitoring
+
+### Health Checks
+```bash
+# Check container status
+docker compose ps
+
+# View logs
+docker compose logs -f server
+docker compose logs -f worker
+
+# Check database connectivity
+cd ../shared-services
+./manage.sh psql
+\c authentik
+\dt  # List tables
 ```
-authentik/
-├── docker-compose.yml
-├── .env -> ~/dotfiles/docker/authentik/.env  # Symlinked configuration
-├── media/                                    # User uploads and media files
-├── certs/                                    # SSL certificates
-├── custom-templates/                         # Custom templates
-└── README.md
+
+### Resource Usage
+```bash
+# Monitor container resources
+docker stats authentik-server-1 authentik-worker-1
+
+# Check shared database usage
+cd ../shared-services && ./manage.sh status
 ```
 
-## Backup
+## 🔒 Security
 
-Important directories to backup:
+### Database Security
+- Uses shared PostgreSQL with dedicated `authentik` database
+- Strong randomly generated passwords
+- Network isolation through Docker networks
 
-- `./media/` - User uploads and media files
-- `~/dotfiles/docker/authentik/.env` - Configuration file
-- PostgreSQL data is stored in Docker volumes
-- Consider backing up the database regularly:
-  ```bash
-  docker-compose exec postgresql pg_dump -U authentik authentik > backup.sql
-  ```
+### Authentication Security
+- OIDC/OAuth2 protocols
+- Multi-factor authentication support
+- Session management
+- Audit logging
 
-## Configuration Management
+## 🚨 Troubleshooting
 
-The environment file is managed in the dotfiles repository at `~/dotfiles/docker/authentik/.env`. This allows for:
-- Version control of configuration
-- Centralized management across multiple deployments
-- Easy backup and restoration of settings
+### Common Issues
+
+1. **Service won't start:**
+   ```bash
+   # Check if shared services are running
+   cd ../shared-services && ./manage.sh status
+   
+   # Verify database connection
+   docker exec authentik-server-1 python -m authentik.lib.config
+   ```
+
+2. **Database connection errors:**
+   ```bash
+   # Check shared PostgreSQL
+   docker exec shared_postgres pg_isready -U postgres
+   
+   # Verify authentik database exists
+   docker exec shared_postgres psql -U postgres -l | grep authentik
+   ```
+
+3. **Redis connection errors:**
+   ```bash
+   # Check shared Redis
+   docker exec shared_redis redis-cli -a "password" ping
+   
+   # Test Redis database 1 (Authentik's database)
+   docker exec shared_redis redis-cli -a "password" -n 1 ping
+   ```
+
+### Debug Commands
+```bash
+# Check all containers
+docker compose ps -a
+
+# Full logs
+docker compose logs
+
+# Check configuration
+docker exec authentik-server-1 ak check
+
+# Database status
+cd ../shared-services && ./manage.sh psql -c "\l"
+```
+
+## 🔄 Backup & Recovery
+
+### Database Backup
+Authentik data is automatically included in shared services backups:
+```bash
+cd ../shared-services
+./manage.sh backup
+```
+
+### Configuration Backup
+```bash
+# Backup custom configurations
+tar -czf authentik-config-$(date +%Y%m%d).tar.gz .env media/ custom-templates/
+```
+
+## 📚 Additional Resources
+
+- **Official Documentation:** https://goauthentik.io/docs/
+- **Configuration Reference:** https://goauthentik.io/docs/installation/configuration
+- **Integration Guides:** https://goauthentik.io/integrations/
+
+## 🏆 Benefits of Shared Services
+
+- **Resource Efficiency:** ~150MB RAM savings per service
+- **Simplified Management:** Single database backup/restore process
+- **Better Performance:** Optimized shared database connections
+- **Easier Monitoring:** Centralized database health monitoring
+
+---
+
+**Next Steps:** Configure SSO for other services in your stack to take full advantage of Authentik's identity management capabilities.

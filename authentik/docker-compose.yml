@@ -1,105 +1,67 @@
+---
+version: '3.7'
+
 services:
-  postgresql:
-    image: docker.io/library/postgres:16-alpine
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
-      start_period: 20s
-      interval: 30s
-      retries: 5
-      timeout: 5s
-    volumes:
-      - database:/var/lib/postgresql/data
-    environment:
-      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
-      POSTGRES_USER: ${PG_USER:-authentik}
-      POSTGRES_DB: ${PG_DB:-authentik}
-    env_file:
-      - .env
-    networks:
-      - authentik
-
-  redis:
-    image: docker.io/library/redis:alpine
-    command: --save 60 1 --loglevel warning --requirepass ${REDIS_PASS}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASS} ping | grep PONG"]
-      start_period: 20s
-      interval: 30s
-      retries: 5
-      timeout: 3s
-    volumes:
-      - redis:/data
-    networks:
-      - authentik
-    env_file:
-      - .env
-
   server:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.6.4}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/authentik}:${AUTHENTIK_TAG:-2024.8.3}
     restart: unless-stopped
     command: server
     environment:
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_REDIS__PASSWORD: ${REDIS_PASS}
-      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_REDIS__HOST: shared_redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS__PASSWORD}
+      AUTHENTIK_REDIS__DB: ${AUTHENTIK_REDIS__DB:-1}
+      AUTHENTIK_POSTGRESQL__HOST: shared_postgres
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
-      AUTHENTIK_COOKIE_DOMAIN: ${DOMAIN}
-      AUTHENTIK_DISABLE_UPDATE_CHECK: true
-      AUTHENTIK_ERROR_REPORTING__ENABLED: false
+    env_file:
+      - .env
     volumes:
       - ./media:/media
       - ./custom-templates:/templates
-    env_file:
-      - .env
-    depends_on:
-      - postgresql
-      - redis
+    ports:
+      - "${COMPOSE_PORT_HTTP:-9000}:9000"
+      - "${COMPOSE_PORT_HTTPS:-9443}:9443"
     networks:
       - authentik
       - traefik
+      - shared-services
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.authentik.rule=Host(`auth.${DOMAIN:-localhost}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.authentik.middlewares=public-security"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
 
   worker:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.6.4}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/authentik}:${AUTHENTIK_TAG:-2024.8.3}
     restart: unless-stopped
     command: worker
     environment:
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_REDIS__PASSWORD: ${REDIS_PASS}
-      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_REDIS__HOST: shared_redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS__PASSWORD}
+      AUTHENTIK_REDIS__DB: ${AUTHENTIK_REDIS__DB:-1}
+      AUTHENTIK_POSTGRESQL__HOST: shared_postgres
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
-      AUTHENTIK_DISABLE_UPDATE_CHECK: true
-      AUTHENTIK_ERROR_REPORTING__ENABLED: false
-    user: root
+    env_file:
+      - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./media:/media
       - ./certs:/certs
       - ./custom-templates:/templates
-    env_file:
-      - .env
-    depends_on:
-      - postgresql
-      - redis
     networks:
       - authentik
+      - shared-services
 
 networks:
   authentik:
     driver: bridge
   traefik:
+    external: true
+  shared-services:
     external: true
 
 volumes:

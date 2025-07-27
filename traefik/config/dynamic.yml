@@ -50,21 +50,13 @@ http:
           - "10.0.0.0/8"            # private networks
           - "172.16.0.0/12"         # private networks  
           - "192.168.0.0/16"        # private networks
-          # Add your home/office IP here:
-          # - "YOUR_HOME_IP/32"
 
     # Enhanced authentication
     auth:
       basicAuth:
         users:
-          - "${TRAEFIK_AUTH}"
+          - "mumbles:$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"
         realm: "Restricted Access"
-
-    # Geo-blocking (block common attack origins)
-    geo-block:
-      ipWhiteList:
-        sourceRange:
-          - "0.0.0.0/0"  # Allow all for now, customize as needed
 
     # Chain security middlewares for admin services
     admin-security:
@@ -96,13 +88,12 @@ http:
         servers:
           - url: "http://127.0.0.1:8080"
 
-# Enhanced TLS configuration
+# Enhanced TLS configuration (Fixed syntax)
 tls:
   options:
     default:
-      sslProtocols:
-        - "TLSv1.2"
-        - "TLSv1.3"
+      minVersion: "VersionTLS12"
+      maxVersion: "VersionTLS13"
       cipherSuites:
         - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
         - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
@@ -111,14 +102,3 @@ tls:
       curvePreferences:
         - "CurveP521"
         - "CurveP384"
-      minVersion: "VersionTLS12"
-      maxVersion: "VersionTLS13"
-
-# Certificate configuration
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: "${ACME_EMAIL}"
-      storage: "/letsencrypt/acme.json"
-      httpChallenge:
-        entryPoint: "web"

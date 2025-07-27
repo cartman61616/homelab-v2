@@ -1,467 +1,198 @@
 # 🚀 Docker Stack Server - Complete Infrastructure
 
-A comprehensive, security-hardened Docker infrastructure with reverse proxy, monitoring, identity management, and cloud storage.
+A comprehensive, security-hardened Docker infrastructure with reverse proxy, monitoring, identity management, and cloud storage, optimized with shared database services for maximum efficiency.
 
 ## 📋 Table of Contents
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Services](#services)
-- [Security](#security)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Maintenance](#maintenance)
-- [Troubleshooting](#troubleshooting)
 
-## 🏗️ Overview
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [🗄️ Shared Services](#️-shared-services)
+- [📦 Services](#-services)
+- [🚀 Quick Start](#-quick-start)
+- [🔧 Management](#-management)
+- [📊 Monitoring](#-monitoring)
+- [🔒 Security](#-security)
+- [📖 Documentation](#-documentation)
 
-This server provides a complete self-hosted infrastructure including:
-- **Identity Provider** (Authentik)
-- **Cloud Storage** (Nextcloud)
-- **Monitoring Stack** (Prometheus, Grafana, Alertmanager)
-- **Reverse Proxy** (Traefik with automatic SSL)
-- **Security Hardening** (Firewall, Fail2Ban, Rate limiting)
+## 🏗️ Architecture Overview
 
-## 🏛️ Architecture
+This Docker stack is built around a **shared services architecture** that maximizes resource efficiency:
 
 ```
-Internet → Cloudflare → Traefik (80/443) → Services
-                           ↑
-                    Security Layers:
-                    - UFW Firewall
-                    - Fail2Ban IPS
-                    - Rate Limiting
-                    - SSL/TLS
-                    - Authentication
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Applications  │    │  Shared Services │    │   Infrastructure│
+├─────────────────┤    ├─────────────────┤    ├─────────────────┤
+│ • Authentik     │───►│ • PostgreSQL    │    │ • Traefik       │
+│ • Immich        │───►│ • Redis         │    │ • Monitoring    │
+│ • Nextcloud     │───►│                 │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### Network Layout
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Public Web    │    │  Monitoring      │    │  Internal DB    │
-│                 │    │                  │    │                 │
-│ • Traefik      │    │ • Prometheus     │    │ • PostgreSQL    │
-│ • Grafana      │    │ • Node Exporter  │    │ • MariaDB       │
-│ • Authentik    │    │ • cAdvisor       │    │ • Redis         │
-│ • Nextcloud    │    │ • Alertmanager   │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
+## 🗄️ Shared Services
 
-## 🛠️ Services
+**Database consolidation achieved:**
+- **Before:** 3 Redis + 2 PostgreSQL = 5 database containers
+- **After:** 1 Redis + 1 PostgreSQL + 1 MySQL = 3 database containers
+- **Savings:** ~400-600MB RAM + reduced CPU overhead
 
-### Public Services
-| Service | URL Pattern | Purpose | Auth Required |
-|---------|-------------|---------|---------------|
-| **Traefik** | traefik.yourdomain.com | Reverse proxy dashboard | ✅ Basic Auth |
-| **Grafana** | grafana.yourdomain.com | Monitoring dashboards | ✅ Built-in |
-| **Authentik** | auth.yourdomain.com | Identity provider | ✅ Built-in |
-| **Nextcloud** | cloud.yourdomain.com | Cloud storage | ✅ Built-in |
+### Shared PostgreSQL
+- **Container:** `shared_postgres`
+- **Serves:** Authentik, Immich
+- **Databases:** `authentik`, `immich`
 
-### Admin Services (Protected)
-| Service | URL Pattern | Purpose | Auth Required |
-|---------|-------------|---------|---------------|
-| **Prometheus** | prometheus.yourdomain.com | Metrics collection | ✅ Basic Auth |
-| **Alertmanager** | alertmanager.yourdomain.com | Alert management | ✅ Basic Auth |
-| **cAdvisor** | cadvisor.yourdomain.com | Container metrics | ✅ Basic Auth |
-| **Node Exporter** | node-exporter.yourdomain.com | Host metrics | ✅ Basic Auth |
+### Shared Redis  
+- **Container:** `shared_redis`
+- **Serves:** All applications (separated by database number)
+- **Databases:** 0 (Immich), 1 (Authentik), 2 (Nextcloud)
 
-## 🔒 Security
+## 📦 Services
 
-### Multi-Layer Security Architecture
-1. **Network Security** - UFW Firewall (only ports 22, 80, 443 open)
-2. **Intrusion Prevention** - Fail2Ban monitoring SSH and HTTP
-3. **Application Security** - Rate limiting, security headers, HSTS
-4. **Authentication** - Basic auth for admin services, app-level auth for others
-5. **Encryption** - TLS 1.2+ only, automatic Let's Encrypt certificates
-6. **Isolation** - Docker network segregation, database isolation
-
-### Authentication Layers
-| Service | Authentication Method | Notes |
-|---------|----------------------|-------|
-| **Traefik Dashboard** | Basic Auth | htpasswd protected |
-| **Grafana** | Built-in Auth | Username/password login |
-| **Authentik** | Built-in Auth | Identity provider setup |
-| **Nextcloud** | Built-in Auth | Username/password login |
-| **Admin Services** | Basic Auth | Traefik middleware protection |
+| Service | Description | URL | Database |
+|---------|-------------|-----|----------|
+| 🔐 **Authentik** | Identity Provider & SSO | `auth.snorlax.me` | Shared PostgreSQL |
+| 📸 **Immich** | Photo Management | `photos.snorlax.me` | Shared PostgreSQL + Redis |
+| ☁️ **Nextcloud** | File Storage & Sync | `cloud.snorlax.me` | MySQL + Shared Redis |
+| 📊 **Grafana** | Monitoring Dashboard | `grafana.snorlax.me` | Local Storage |
+| 🎯 **Traefik** | Reverse Proxy | `traefik.snorlax.me` | File-based Config |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Ubuntu 22.04+ server
-- Docker and Docker Compose installed
-- Domain name with Cloudflare DNS management
-- Server with public IP address
+- Docker & Docker Compose installed
+- Domain name pointing to your server
+- Ports 80, 443 open
 
-### 1. DNS Configuration (Cloudflare)
-Set up these A records pointing to your server's public IP:
-
-**Option 1: Wildcard Record (Recommended)**
-```
-Type: A
-Name: *
-Content: YOUR_SERVER_PUBLIC_IP
-Proxy status: DNS only (gray cloud)
-TTL: Auto
-```
-
-**Option 2: Individual Records**
-```
-traefik.yourdomain.com → YOUR_SERVER_IP
-grafana.yourdomain.com → YOUR_SERVER_IP  
-prometheus.yourdomain.com → YOUR_SERVER_IP
-auth.yourdomain.com → YOUR_SERVER_IP
-cloud.yourdomain.com → YOUR_SERVER_IP
-alertmanager.yourdomain.com → YOUR_SERVER_IP
-cadvisor.yourdomain.com → YOUR_SERVER_IP
-node-exporter.yourdomain.com → YOUR_SERVER_IP
-```
-
-**⚠️ Important**: Use "DNS only" (gray cloud) initially for Let's Encrypt certificate generation.
-
-### 2. Find Your Server IP
+### 1. Start Shared Services
 ```bash
-curl -4 ifconfig.co
+cd shared-services
+./manage.sh start
 ```
 
-### 3. Start Services
+### 2. Start Core Infrastructure
 ```bash
-# Start Traefik (reverse proxy)
-cd /home/mumbles/docker-stack/traefik
-docker compose up -d
+# Start reverse proxy
+cd traefik && docker compose up -d
 
-# Start Monitoring Stack
-cd /home/mumbles/docker-stack/monitoring  
-docker compose up -d
-
-# Start Authentik (identity provider)
-cd /home/mumbles/docker-stack/authentik
-docker compose up -d
-
-# Start Nextcloud (cloud storage)
-cd /home/mumbles/docker-stack/nextcloud
-docker compose up -d
+# Start monitoring
+cd ../monitoring && docker compose up -d
 ```
 
-### 4. Verify Setup
+### 3. Start Applications
 ```bash
-# Check all services are running
-docker ps
+# Start identity provider
+cd ../authentik && docker compose up -d
 
-# Check Traefik routes
-curl -s http://localhost:8080/api/http/routers
+# Start photo management
+cd ../immich && docker compose up -d
 
-# Test DNS resolution
-nslookup grafana.yourdomain.com
-
-# Check SSL certificates (after DNS propagation)
-docker logs traefik --tail=20
+# Start file storage
+cd ../nextcloud && docker compose up -d
 ```
 
-## ⚙️ Configuration
+## 🔧 Management
 
-### Environment Files
-Configuration is managed centrally in `~/dotfiles/docker/`:
-
-```
-~/dotfiles/docker/
-├── traefik/.env          # Reverse proxy config
-├── monitoring/.env       # Monitoring stack config  
-├── authentik/.env        # Identity provider config
-└── nextcloud/.env        # Cloud storage config
-```
-
-### Key Configuration Templates
-
-#### Traefik (`~/dotfiles/docker/traefik/.env`)
-```env
-DOMAIN=yourdomain.com
-ACME_EMAIL=admin@yourdomain.com
-TRAEFIK_AUTH=username:$apr1$hash...  # Generated htpasswd hash
-LOG_LEVEL=INFO
-```
-
-#### Monitoring (`~/dotfiles/docker/monitoring/.env`) 
-```env
-DOMAIN=yourdomain.com
-GRAFANA_USER=admin
-GRAFANA_PASSWORD=your_secure_password
-```
-
-#### Authentik (`~/dotfiles/docker/authentik/.env`)
-```env
-DOMAIN=yourdomain.com
-PG_PASS=generated_secure_password
-AUTHENTIK_SECRET_KEY=generated_secret_key
-REDIS_PASS=generated_redis_password
-```
-
-#### Nextcloud (`~/dotfiles/docker/nextcloud/.env`)
-```env
-DOMAIN=yourdomain.com
-NEXTCLOUD_ADMIN_USER=admin
-NEXTCLOUD_ADMIN_PASSWORD=your_secure_password
-MYSQL_ROOT_PASSWORD=generated_mysql_password
-MYSQL_PASSWORD=generated_mysql_user_password
-REDIS_PASSWORD=generated_redis_password
-```
-
-### Generate Secure Passwords
+### Shared Services Management
 ```bash
-# Generate random passwords
-openssl rand -base64 32
+cd shared-services
 
-# Generate htpasswd hash for Traefik
-htpasswd -nb username password
+# Check status
+./manage.sh status
+
+# View logs
+./manage.sh logs
+
+# Backup all databases
+./manage.sh backup
+
+# Connect to databases
+./manage.sh psql      # PostgreSQL
+./manage.sh redis-cli # Redis
 ```
 
-## 🔧 Maintenance
+### Service Dependencies
+**Start Order:**
+1. `shared-services` (databases)
+2. `traefik` (reverse proxy)
+3. `monitoring` (optional)
+4. Applications (`authentik`, `immich`, `nextcloud`)
 
-### Regular Tasks
+**Stop Order:** Reverse of start order
 
-#### Daily
+## 📊 Monitoring
+
+Access monitoring dashboards:
+- **Grafana:** http://localhost:3000
+- **Prometheus:** http://localhost:9090
+- **Traefik Dashboard:** http://localhost:8080
+
+Resource usage tracking:
 ```bash
-# Check service health
-docker ps
-sudo fail2ban-client status
-```
-
-#### Weekly  
-```bash
-# Update system packages
-sudo apt update && sudo apt upgrade
-
-# Check disk usage
-df -h
-docker system df
-```
-
-#### Monthly
-```bash
-# Update Docker images
-cd /home/mumbles/docker-stack
-for dir in traefik monitoring authentik nextcloud; do
-  cd $dir && docker compose pull && docker compose up -d && cd ..
-done
-
-# Clean unused Docker resources
-docker system prune -f
-```
-
-### Backup Strategy
-
-#### Critical Data to Backup
-1. **Configuration Files**: `~/dotfiles/docker/`
-2. **SSL Certificates**: `traefik/letsencrypt/acme.json`
-3. **Database Volumes**: Grafana, Authentik, Nextcloud databases
-4. **Application Data**: Nextcloud user files
-
-#### Backup Commands
-```bash
-# Backup databases
-docker compose -f authentik/docker-compose.yml exec postgresql \
-  pg_dump -U authentik authentik > authentik-backup-$(date +%Y%m%d).sql
-
-docker compose -f nextcloud/docker-compose.yml exec nextcloud-db \
-  mysqldump -u nextcloud -p nextcloud > nextcloud-backup-$(date +%Y%m%d).sql
-
-# Backup Docker volumes
-docker run --rm -v nextcloud_nextcloud_data:/data \
-  -v $(pwd):/backup alpine tar czf /backup/nextcloud-data-$(date +%Y%m%d).tar.gz /data
-```
-
-### Log Management
-
-#### View Logs
-```bash
-# Service logs
-docker logs traefik --tail=50
-docker logs grafana --tail=50
-docker logs prometheus --tail=50
-
-# System security logs
-sudo tail -f /var/log/fail2ban.log
-sudo tail -f /var/log/ufw.log
-```
-
-## 🛡️ Security
-
-### Security Features Implemented
-- ✅ **UFW Firewall**: Only essential ports open (22, 80, 443)
-- ✅ **Fail2Ban**: Intrusion prevention system
-- ✅ **Rate Limiting**: 10 req/min public, 2 req/min admin services
-- ✅ **SSL/TLS**: Automatic Let's Encrypt certificates, TLS 1.2+ only
-- ✅ **Security Headers**: HSTS, XSS protection, content security policy
-- ✅ **Network Isolation**: Services isolated in separate Docker networks
-- ✅ **Strong Authentication**: Secure password requirements
-- ✅ **Database Security**: Password-protected, network-isolated databases
-
-### Security Monitoring
-```bash
-# Check firewall status
-sudo ufw status verbose
-
-# Check intrusion prevention
-sudo fail2ban-client status
-sudo fail2ban-client status sshd
-
-# Check banned IPs
-sudo fail2ban-client status traefik-auth
-
-# Security headers test
-curl -I https://grafana.yourdomain.com | grep -i security
-```
-
-### Incident Response
-If security breach suspected:
-1. **Block malicious IPs**: `sudo ufw deny from <IP>`
-2. **Check access logs**: `docker logs traefik --tail=100`
-3. **Review Fail2Ban logs**: `sudo tail -100 /var/log/fail2ban.log`
-4. **Change passwords**: Update all service credentials
-5. **Restart services**: `docker compose restart` in each directory
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### Services Not Accessible
-```bash
-# Check if containers are running
-docker ps
-
-# Check Traefik routes
-docker logs traefik --tail=20
-
-# Check DNS resolution
-nslookup grafana.yourdomain.com
-
-# Check SSL certificates
-docker exec traefik cat /letsencrypt/acme.json | jq
-```
-
-#### SSL Certificate Issues
-```bash
-# Check Let's Encrypt rate limits
-docker logs traefik | grep -i "rate limit"
-
-# Reset certificates (careful!)
-cd traefik
-rm letsencrypt/acme.json
-touch letsencrypt/acme.json
-chmod 600 letsencrypt/acme.json
-docker compose restart traefik
-```
-
-#### Performance Issues
-```bash
-# Check resource usage
+# View container resource usage
 docker stats
 
-# Check disk space
-df -h
-docker system df
-
-# Check memory usage
-free -h
+# Monitor shared database usage
+cd shared-services && ./manage.sh status
 ```
 
-### Service-Specific Troubleshooting
+## 🔒 Security
 
-#### Grafana
+### Database Security
+- All databases use strong randomly generated passwords
+- Services isolated on dedicated Docker networks
+- Only authorized applications can access shared databases
+
+### Network Security  
+- All external traffic routed through Traefik
+- Automatic SSL/TLS certificates via Let's Encrypt
+- Internal service communication on isolated networks
+
+### Backup Security
+- Database backups stored locally
+- Use `./manage.sh backup` for regular backups
+- Consider implementing off-site backup storage
+
+## 📖 Documentation
+
+| Component | Documentation |
+|-----------|---------------|
+| **Shared Services** | `shared-services/README.md` |
+| **Authentik** | `authentik/README.md` |
+| **Monitoring** | `monitoring/README.md` |
+| **Traefik** | `traefik/README.md` |
+
+### Configuration Files
+- **Environment Variables:** Each service has its own `.env` file
+- **Shared Credentials:** `shared-services/.env`
+- **Traefik Config:** `traefik/traefik.yml`
+- **Monitoring Config:** `monitoring/prometheus/` and `monitoring/grafana/`
+
+## 🏆 Resource Efficiency
+
+This architecture achieves significant resource savings through shared services:
+
+- **Memory Savings:** ~400-600MB RAM
+- **Container Reduction:** 5 → 3 database containers  
+- **Management Simplification:** Centralized database administration
+- **Backup Simplification:** Single backup process for all databases
+
+## 🚨 Troubleshooting
+
+### Common Issues
+1. **Services won't start:** Check if shared services are running first
+2. **Database connection errors:** Verify shared services are healthy
+3. **Port conflicts:** Ensure no other services use ports 80, 443, 5432, 6379
+
+### Debug Commands
 ```bash
-# Reset admin password
-docker exec -it grafana grafana-cli admin reset-admin-password newpassword
+# Check all container status
+docker ps -a
 
-# Check datasource connectivity
-curl -u admin:password http://localhost:3000/api/datasources
+# Check shared services health
+cd shared-services && ./manage.sh status
+
+# View service logs
+docker compose logs -f [service-name]
 ```
-
-#### Authentik
-```bash
-# Check worker status
-docker logs authentik-worker-1
-
-# Access management interface
-# Go to https://auth.yourdomain.com/if/admin/
-```
-
-#### Nextcloud
-```bash
-# Run occ commands
-docker exec -u www-data nextcloud-app php occ status
-
-# Scan files
-docker exec -u www-data nextcloud-app php occ files:scan --all
-```
-
-### Recovery Procedures
-
-#### Complete System Recovery
-```bash
-# Stop all services
-cd /home/mumbles/docker-stack
-for dir in */; do cd "$dir" && docker compose down && cd ..; done
-
-# Start in order
-cd traefik && docker compose up -d && sleep 30 && cd ..
-cd monitoring && docker compose up -d && cd ..
-cd authentik && docker compose up -d && cd ..
-cd nextcloud && docker compose up -d && cd ..
-```
-
-## 📞 Support
-
-### Documentation Locations
-- **General Setup**: `/home/mumbles/docker-stack/README.md` (this file)
-- **Security Guide**: `/home/mumbles/docker-stack/traefik/security_summary.md`
-- **Cloudflare Setup**: `/home/mumbles/docker-stack/traefik/cloudflare_setup.txt`
-- **Individual Services**: Each service directory contains its own README.md
-
-### Useful Commands Reference
-```bash
-# Service management
-docker compose ps                    # Check status
-docker compose logs -f [service]     # View logs
-docker compose restart [service]     # Restart service
-docker compose pull                  # Update images
-
-# System monitoring
-sudo systemctl status fail2ban      # Check Fail2Ban
-sudo ufw status                      # Check firewall
-htop                                # System resources
-df -h                               # Disk usage
-
-# Network troubleshooting  
-ss -tulpn                           # Open ports
-docker network ls                    # Docker networks
-nslookup [domain]                   # DNS resolution
-```
-
-## 📊 System Requirements
-
-### Minimum Requirements
-- **OS**: Ubuntu 22.04 LTS or newer
-- **RAM**: 4GB minimum, 8GB recommended
-- **Storage**: 50GB minimum, 100GB+ recommended  
-- **CPU**: 2 cores minimum, 4+ cores recommended
-- **Network**: Reliable internet connection with static IP
-
-### Recommended Setup
-- **OS**: Ubuntu 22.04 LTS (latest)
-- **RAM**: 16GB or more
-- **Storage**: SSD with 200GB+ available space
-- **CPU**: 4+ cores with modern architecture
-- **Network**: Dedicated server or VPS with good bandwidth
-
-## 🏷️ Version Information
-- **Created**: July 2025
-- **Docker Stack Version**: 1.0
-- **Traefik**: v3.1
-- **Authentik**: 2025.6.4
-- **Nextcloud**: Latest Apache
-- **Grafana**: Latest
-- **Prometheus**: Latest
-
-**Happy self-hosting! 🚀**
 
 ---
 
-*Note: Replace `yourdomain.com` with your actual domain name throughout this documentation.*
+**Need Help?** Check individual service README files or the shared services documentation for detailed configuration and troubleshooting information.

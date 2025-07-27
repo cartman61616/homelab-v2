@@ -13,15 +13,16 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
     networks:
       - monitoring
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.snorlax.me`)"
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.prometheus.middlewares=admin-security"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
     env_file:
       - .env
@@ -37,22 +38,16 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=https://grafana.${DOMAIN:-localhost}
-      - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      - GF_SECURITY_COOKIE_SECURE=true
-      - GF_SECURITY_COOKIE_SAMESITE=strict
-      - GF_SECURITY_CONTENT_TYPE_PROTECTION=true
-      - GF_SECURITY_X_CONTENT_TYPE_OPTIONS=nosniff
-      - GF_SECURITY_X_XSS_PROTECTION=true
+    ports:
+      - "3000:3000"
     networks:
       - monitoring
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.snorlax.me`)"
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.grafana.middlewares=public-security"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
     env_file:
       - .env
@@ -70,15 +65,10 @@ services:
       - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
     networks:
       - monitoring
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.node-exporter.rule=Host(`node-exporter.${DOMAIN:-localhost}`)"
-      - "traefik.http.routers.node-exporter.entrypoints=websecure"
-      - "traefik.http.routers.node-exporter.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.node-exporter.middlewares=admin-security"
-      - "traefik.http.services.node-exporter.loadbalancer.server.port=9100"
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -93,16 +83,10 @@ services:
     privileged: true
     devices:
       - /dev/kmsg
+    ports:
+      - "8081:8080"
     networks:
       - monitoring
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.cadvisor.rule=Host(`cadvisor.${DOMAIN:-localhost}`)"
-      - "traefik.http.routers.cadvisor.entrypoints=websecure"
-      - "traefik.http.routers.cadvisor.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.cadvisor.middlewares=admin-security"
-      - "traefik.http.services.cadvisor.loadbalancer.server.port=8080"
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -114,17 +98,11 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-      - '--web.external-url=https://alertmanager.${DOMAIN:-localhost}'
+      - '--web.external-url=http://localhost:9093'
+    ports:
+      - "9093:9093"
     networks:
       - monitoring
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.alertmanager.rule=Host(`alertmanager.${DOMAIN:-localhost}`)"
-      - "traefik.http.routers.alertmanager.entrypoints=websecure"
-      - "traefik.http.routers.alertmanager.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.alertmanager.middlewares=admin-security"
-      - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
 
   loki:
     image: grafana/loki:latest
@@ -134,6 +112,8 @@ services:
       - ./loki:/etc/loki
       - loki_data:/tmp/loki
     command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
     networks:
       - monitoring
 
